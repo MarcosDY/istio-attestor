@@ -40,7 +40,8 @@ func NewAuthenticator(apiAddr string, apiCert []byte, apiToken string) *Authenti
 	}
 }
 
-// createClient create an http client with provided ca
+// createClient create a http client
+// apiCert: Root ca for client
 func createClient(apiCert []byte) *http.Client {
 	caPool := x509.NewCertPool()
 	caPool.AppendCertsFromPEM(apiCert)
@@ -55,7 +56,8 @@ func createClient(apiCert []byte) *http.Client {
 	}
 }
 
-// tokenReview do a token review to k8s to verify if provided token is valid
+// tokenReview make a call to token review api to verify provided token
+// jwt: token to be verified
 func (a *Authenticator) tokenReview(jwt string) (*http.Response, error) {
 
 	// Create the TokenReview Object and marshal it into json
@@ -88,7 +90,7 @@ func (a *Authenticator) tokenReview(jwt string) (*http.Response, error) {
 	return resp, nil
 }
 
-// ValidateJwt validate provided jwt with token review api.
+// ValidateJwt validate provided jwt using token review api.
 func (a *Authenticator) ValidateJwt(jwt string) ([]string, error) {
 	// cal token review api to verify jwt token
 	resp, err := a.tokenReview(jwt)
