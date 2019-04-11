@@ -1,4 +1,3 @@
-.DEFAULT_GOAL := help
 export GO111MODULE=on
 binary_dirs := server
 out_dir := bin
