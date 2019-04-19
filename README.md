@@ -5,13 +5,11 @@ Overview
 --
 
 The Istio-Attestor is a plugin for the [SPIRE](https://github.com/spiffe/spire) server. This plugin allows SPIRE to automatically attest nodes from Istio using [K8s Token Review](https://docs.okd.io/latest/rest_api/apis-authentication.k8s.io/v1.TokenReview.html) API to verify bearer tokens from Istio.
-In case SPIRE server is running out of kubernetes a kubernetes configuration file is required to do connection to token review api.
+The plugin needs configuration to locate and authenticate with the Kubernetes API server. When SPIRE server is running within Kubernetes, the plugin will use in-cluster configuration (i.e. service account tokens and environment variables) for this purpose. When SPIRE server is running outside Kubernetes, a Kubernetes config file (e.g. `~/.kube/config`) is needed to supply the configuration.
 
-Create kubernetes config
+Create Kubernetes config
 --
-A script is provided to simplify the proccess of creation of a configuration file, this script will create a new service account
-in case it does not exist, if service account with the same name exist it will use it to generate it.
-It is only necessary if it is running outside kubernetes.
+A script is provided to simplify the process of creating the configuration file that is necessary when running SPIRE Server outside Kubernetes. This script takes in a service account name and a namespace and produces a configuration file containing the service account token for that service account. If the service account does not exist, it will be created first.
 
 To run this script run 
 
@@ -131,7 +129,7 @@ plugins {
    NodeAttestor "istio_attestor" {
        plugin_cmd = "<PATH TO PLUGIN>"
        plugin_data {
-           # Path to kubernetes config, in case it is not provided 
+           # Path to Kubernetes config, in case it is not provided 
            # attestor is configured as it is inside k8s
            k8s_config_path = "/etc/k8s-spire-default-conf"
        }

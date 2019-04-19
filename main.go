@@ -27,14 +27,9 @@ var pluginErr = errs.Class("istio")
 
 // IstioAttestorPlugin implements attestation for Istio's agent node
 type IstioAttestorPlugin struct {
-	c *attestorConfig
-	// kubernetes client to verify provided token
+	// Kubernetes client to verify provided token
 	kubeClient *kubernetes.Clientset
 	mtx        *sync.Mutex
-}
-
-type attestorConfig struct {
-	configPath string
 }
 
 // IstioAttestorConfig holds hcl configurations for Istio attestor plugin
@@ -83,8 +78,8 @@ func (i *IstioAttestorPlugin) Attest(stream nodeattestor.NodeAttestor_AttestServ
 	// remove "Bearer " and validate token using using token service with provided service account.
 	token := strings.TrimPrefix(attestedData.Token, "Bearer ")
 
-	// validate token with token review api call using kubernetes client
-	claim, err := i.ValidateJWT(token)
+	// validate token with token review api call using Kubernetes client
+	claim, err := i.validateJWT(token)
 	if err != nil {
 		return pluginErr.New("provided token from request is not valid: ", err)
 	}
@@ -97,28 +92,23 @@ func (i *IstioAttestorPlugin) Attest(stream nodeattestor.NodeAttestor_AttestServ
 
 // Configure configures the Istio attestor plugin
 func (i *IstioAttestorPlugin) Configure(ctx context.Context, req *spi.ConfigureRequest) (*spi.ConfigureResponse, error) {
-	resp := &spi.ConfigureResponse{}
 	config := &IstioAttestorConfig{}
 
 	err := hcl.Decode(&config, req.Configuration)
 	if err != nil {
-		err := pluginErr.New("error parsing Istio Attestor configuration: %s", err)
-		return resp, err
+		return nil, pluginErr.New("error parsing Istio Attestor configuration: %s", err)
+	}
+
+	kubeClient, err := i.newKubeClient(config.ConfigPath)
+	if err != nil {
+		return nil, pluginErr.New("error creating kubeClient: %v ", err)
 	}
 
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
+	i.kubeClient = kubeClient
 
-	i.c = &attestorConfig{
-		configPath: config.ConfigPath,
-	}
-
-	i.kubeClient, err = i.newKubeClient()
-	if err != nil {
-		return resp, pluginErr.New("error creating kubeClient: %v ", err)
-	}
-
-	return resp, nil
+	return &spi.ConfigureResponse{}, nil
 }
 
 // GetPluginInfo returns the version and other metadata of the plugin.
@@ -126,10 +116,10 @@ func (i *IstioAttestorPlugin) GetPluginInfo(ctx context.Context, request *spi.Ge
 	return &spi.GetPluginInfoResponse{}, nil
 }
 
-// newKubeClient create a kubernetes client, it is using provided config, in case config is not provided
+// newKubeClient create a Kubernetes client, it is using provided config, in case config is not provided
 // a client with in cluster configuration is created
-func (i IstioAttestorPlugin) newKubeClient() (*kubernetes.Clientset, error) {
-	config, err := getConfig(i.c.configPath)
+func (i IstioAttestorPlugin) newKubeClient(configPath string) (*kubernetes.Clientset, error) {
+	config, err := getConfig(configPath)
 	if err != nil {
 		return nil, pluginErr.Wrap(err)
 	}
@@ -150,20 +140,20 @@ func getConfig(configPath string) (*rest.Config, error) {
 	return rest.InClusterConfig()
 }
 
-// getKubeClient provide configured kubernetes client
+// getKubeClient provide configured Kubernetes client
 func (i *IstioAttestorPlugin) getKubeClient() (*kubernetes.Clientset, error) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
 	if i.kubeClient == nil {
-		return nil, pluginErr.New("no kubernetes client is configured")
+		return nil, pluginErr.New("no Kubernetes client is configured")
 	}
 
 	return i.kubeClient, nil
 }
 
-// ValidateJwt validate provided jwt using kubernetes token review api.
-func (i *IstioAttestorPlugin) ValidateJWT(jwt string) (*JWTClaims, error) {
+// validateJwt validate provided jwt using Kubernetes token review api.
+func (i *IstioAttestorPlugin) validateJWT(jwt string) (*JWTClaims, error) {
 	reviewReq := &k8sauth.TokenReview{
 		Spec: k8sauth.TokenReviewSpec{
 			Token: jwt,
