@@ -4,48 +4,79 @@ Istio-Attestor
 Overview
 --
 
-The Istio-Attestor is a plugin for the [SPIRE](https://github.com/spiffe/spire) server. This plugin allows SPIRE to automatically attest nodes from Istio using [K8s Token Review](https://docs.okd.io/latest/rest_api/apis-authentication.k8s.io/v1.TokenReview.html) API to verify Bearer token from istio.
+The Istio-Attestor is a plugin for the [SPIRE](https://github.com/spiffe/spire) server. This plugin allows SPIRE to automatically attest nodes from Istio using [K8s Token Review](https://docs.okd.io/latest/rest_api/apis-authentication.k8s.io/v1.TokenReview.html) API to verify bearer tokens from Istio.
+In case SPIRE server is running out of kubernetes a kubernetes configuration file is required to do connection to token review api.
 
-Create and get service account tokens
+Create kubernetes config
 --
-In case the plugin is used outside k8s, a service account is required.
+A script is provided to simplify the proccess of creation of a configuration file, this script will create a new service account
+in case it does not exist, if service account with the same name exist it will use it to generate it.
+It is only necessary if it is running outside kubernetes.
 
-**Create service account** 
+To run this script run 
 
-Create a service account `spire`: 
 ```bash
-kubectl create serviceaccount spire
+./createKubeConfig.sh <serviceAccount> <namespace>
 ```
-**Verify the associated secret:**
-A secret should have been created with service account, it can be verified with:
+for example: 
+```bash
+./createKubeConfig.sh spire default
 ```
-kubectl get serviceaccounts spire -o yaml
+
+output: 
+```bash 
+Service account spire exist
+
+Getting secret of service account spire on default
+
+Extracting ca.crt from secret...
+Getting user token from secret...
+Setting current context to: minikube
+Cluster name: minikube
+Endpoint: https://192.168.99.251:8443
+
+Preparing k8s-spire-default-conf
+Setting a cluster entry in kubeconfig...Cluster "minikube" set.
+Setting token credentials entry in kubeconfig...User "spire-default-minikube" set.
+Setting a context entry in kubeconfig...Context "spire-default-minikube" modified.
+Setting the current-context in the kubeconfig file...Switched to context "spire-default-minikube".
+
+Configuration file 'k8s-spire-default-conf' done!!!!
 ```
-Expected output:
-```
+
+As result a configuration file is created with name `k8s-<serviceAccount>-<namespace>-conf`
+
+```yaml
 apiVersion: v1
-kind: ServiceAccount
-metadata:
-  # ...
-secrets:
-- name: spire-token-xxxxx
+clusters:
+- cluster:
+    certificate-authority-data: <SERVICE ACCOUNT CA.CRT>
+    server: https://192.168.99.251:8443
+  name: minikube
+contexts:
+- context:
+    cluster: minikube
+    namespace: default
+    user: spire-default-minikube
+  name: spire-default-minikube
+current-context: spire-default-minikube
+kind: Config
+preferences: {}
+users:
+- name: spire-default-minikube
+  user:
+    as-user-extra: {}
+    token: <SERVICE ACCOUNT TOKEN>
 ```
-**Get service account token**
 
-Now that service account exists and has a secret we can get a token by using kubectl with a secret name and decoding the result from the base64 format so it can be used by the attestor: 
+Configuration file can be tested running a kubectl:
 ```bash
-kubectl get secret $(kubectl get serviceaccounts spire -o "jsonpath={.secrets..name}") -o "jsonpath={.data..token}" | base64 --decode
+KUBECONFIG=<CONFIG_FILE> kubectl get pods
 ```
-
-**Get service account ca**
-CA is required to verify an http client, to obtain it using kubectl and decode the result:
+output
 ```bash
-kubectl get secret $(kubectl get serviceaccounts spire -o "jsonpath={.secrets..name}") -o "jsonpath={.data['ca\.crt']}" | base64 --decode 
-```
-
-**Get kubernetes api address**
-```bash
-kubectl config view -o jsonpath={.clusters..server}
+NAME                     READY     STATUS    RESTARTS   AGE
+sleep-84488db7b7-ghrmw   2/2       Running   0          10h
 ```
 
 Usage
@@ -54,7 +85,7 @@ Usage
 The plugin can be installed directly by running: 
 
 ```bash
-go install github.com/spiffe/istio-attestor/server
+go install github.com/spiffe/istio-attestor
 ```
 
 It will download, build, and install the Istio-Attestor plugin in your `${GOPATH}/bin` directory by default, or in the path set by the `${GOBIN}` environment variable.
@@ -69,13 +100,7 @@ It will download, build, and install the Istio-Attestor plugin in your `${GOPATH
   cd ${GOPATH}/src/github.com/spiffe/istio-attestor
   ```
 
-2. Install utilities:
-
-  ```bash
-  make utils
-  ```
-
-3. Build the Istio-Attestor:
+2. Build the Istio-Attestor:
 
   ```bash
   make build
@@ -92,7 +117,9 @@ edit <SPIRE Installation Directory/conf/server/server.conf>
 ```
 server {
    ...
-   experimental_skip_agent_id = true
+  experimental {
+       allow_agentless_node_attestors = true
+   }
    ...
 }
 ```
@@ -102,15 +129,11 @@ server {
 plugins {
    ...
    NodeAttestor "istio_attestor" {
-       plugin_cmd = "${GOPATH}/src/github.com/spiffe/istio-attestor/bin/server"
-       enabled = true
+       plugin_cmd = "<PATH TO PLUGIN>"
        plugin_data {
-           # Path to service account token
-           k8s_token_path = "/etc/token"
-           # Path to service account ca
-           k8s_ca_path = "/etc/ca.crt"
-           # Url to k8s api
-           k8s_api_server_url = "https://URL:PORT"
+           # Path to kubernetes config, in case it is not provided 
+           # attestor is configured as it is inside k8s
+           k8s_config_path = "/etc/k8s-spire-default-conf"
        }
    }
    ...

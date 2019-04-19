@@ -1,2 +1,3 @@
-/bin/*
+/istio-attestor
 /vendor
+/k8s-*
