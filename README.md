@@ -24,7 +24,7 @@ for example:
 ```
 
 output: 
-```bash 
+```
 Service account spire exist
 
 Getting secret of service account spire on default
